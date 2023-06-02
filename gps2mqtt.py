@@ -3,14 +3,15 @@
 import json
 import logging
 import os
-import sys
+import requests
+import telnetlib
 from time import sleep, time
 
 import gpsd as _gpsd
 import paho.mqtt.client as mqtt
 from geopy.geocoders import Nominatim
 from gpiozero import Button
-from settings import DEGREE_THRESHOLD, SPEED_THRESHOLD, TIME_THRESHOLD, MQTT_RETRY_CONNECT, _brokers, _mqtt_topic
+from settings import DEGREE_THRESHOLD, SPEED_THRESHOLD, TIME_THRESHOLD, MQTT_RETRY_CONNECT, _brokers, _mqtt_topic, _zm_api
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)-8s %(message)s',
@@ -21,9 +22,6 @@ if 'DEBUG' in os.environ:
 
 class Status:
     def __init__(self):
-        self._bearing_time = None
-        self._previous_bearing = None
-        self._previous_time = None
         self._geolocator = Nominatim(user_agent='ha_address_finder')
 
         # Connect to gpsd
@@ -35,35 +33,7 @@ class Status:
 
         self._last_connect_fail = 0
 
-    # Setter and getter for 'bearing_time' variable
-    @property
-    def bearing_time(self):
-        # logging.debug(f"bearing_time: {self._bearing_time}")
-        return self._bearing_time
-
-    @bearing_time.setter
-    def bearing_time(self, value):
-        self._bearing_time = value
-
-    # Setter and getter for 'previous_bearing' variable
-    @property
-    def previous_bearing(self):
-        # logging.debug(f"previous_bearing: {self._previous_bearing}")
-        return self._previous_bearing
-
-    @previous_bearing.setter
-    def previous_bearing(self, value):
-        self._previous_bearing = value
-
-    # Setter and getter for 'previous_time' variable
-    @property
-    def previous_time(self):
-        # logging.debug(f"previous_time: {self._previous_time}")
-        return self._previous_time
-
-    @previous_time.setter
-    def previous_time(self, value):
-        self._previous_time = value
+        self._zm_api = _zm_api
 
     # Getter for 'gpsd' object
     @property
@@ -93,6 +63,10 @@ class Status:
     def last_connect_fail(self, value):
         self._last_connect_fail = value
 
+    @property
+    def zm_api(self):
+        return self._zm_api
+
 # Function to perform reverse geocoding
 
 
@@ -103,6 +77,46 @@ def perform_reverse_geocoding(status, latitude, longitude):
         return address
     return None
 
+def get_speed_limit(latitude, longitude):
+    url = f"https://api.openstreetmap.org/api/0.6/map?bbox={longitude-0.001},{latitude-0.001},{longitude+0.001},{latitude+0.001}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        xml_data = response.content
+        xml_string = xml_data.decode('utf-8')
+        speed_limit = 0
+        # logging.debug(xml_string)
+        for line in xml_string.splitlines():
+            if "<tag k=\"maxspeed\" v=" in line:
+                speed_limit = line.split("\"")[3]
+                break
+        return speed_limit
+    else:
+        return 0
+
+
+def update_zm(status, string):
+    try:
+        if status.zm_api['enabled']:
+            send_raw_text_via_telnet(status, f"{string}")
+    except:
+        logging.error(f"Unable to connect zoneminder. Check your settings.")
+
+def send_raw_text_via_telnet(status, text):
+    host = status.zm_api['host']
+    port = status.zm_api['port']
+
+    i = 0
+    for m in status.zm_api['monitors']:
+        # Establish a Telnet connection
+        logging.debug(f"connecting {host}:{port}")
+        tn = telnetlib.Telnet(host, port)
+        payload = f"{m[i]}|show||||{text}".encode('utf-8')
+        # Send raw text
+        tn.write(payload + b'\r\n')  # Sending as ASCII, adding carriage return and newline
+
+        # Close the Telnet connection
+        tn.close()
+        i += 1
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
@@ -189,8 +203,12 @@ def button_pressed():
 '''
 def main_loop(status):
     status = connect_brokers(status)
-
+    speed_limit = 0
     street = city = country = postcode = ''
+    bearing_time = None
+    previous_speed = -1
+    previous_bearing = None
+    previous_time = None
     '''
     # Define the GPIO pin number
     GPIO_PIN = 17
@@ -217,9 +235,9 @@ def main_loop(status):
                     bearing = packet.track
                     gps_time = packet.time
 
-                    if (status.previous_bearing is None or
-                        (speed > 0 and abs(bearing - status.previous_bearing) >= DEGREE_THRESHOLD) or
-                            (speed > 0 and status.previous_time is not None and time() - status.previous_time >= TIME_THRESHOLD)):
+                    if (previous_bearing is None or
+                        (speed > 0 and abs(bearing - previous_bearing) >= DEGREE_THRESHOLD) or
+                            (speed > 0 and previous_time is not None and time() - previous_time >= TIME_THRESHOLD)):
                         address = perform_reverse_geocoding(
                             status, latitude, longitude)
                         if address:
@@ -227,7 +245,8 @@ def main_loop(status):
                             city = address.get('city', '')
                             postcode = address.get('postcode', '')
                             country = address.get('country_code', '')
-                        status.previous_bearing = bearing
+                        speed_limit = get_speed_limit(latitude, longitude)
+                        previous_bearing = bearing
                         bearing_time = time()
 
                     if hasattr(packet, 'alt') and hasattr(packet, 'climb'):
@@ -252,6 +271,9 @@ def main_loop(status):
                         'time': gps_time,
                         'satellites': packet.sats,
                         'mqtt_fail': status.last_connect_fail,
+                        'speed_limit': speed_limit,
+                        'altitude': altitude,
+                        'climb': climb,
                         'room': 'car'
                     }
                     logging.debug(f"{data}")
@@ -259,11 +281,16 @@ def main_loop(status):
                     json_data = json.dumps(data)
                     if bearing_time is None or time() - bearing_time > 5:
                         logging.debug(f"Storing previous bearing.")
-                        status.previous_bearing = bearing
+                        previous_bearing = bearing
                         bearing_time = time()
-                    status.previous_time = time()
+                    previous_time = time()
                     # Publish the JSON data to each MQTT broker
                     logging.debug(f"Brokers: {status.brokers}")
+
+                    if round(previous_speed) != round(speed):
+                        update_zm(status, f"{street} {city} {round(speed)} km/h")
+                        previous_speed = speed
+
                     for brokers in status.brokers:
                         if status.last_connect_fail > 0 and time() - status.last_connect_fail > MQTT_RETRY_CONNECT:
                             status = retry_mqtt_connect(status)
@@ -274,9 +301,9 @@ def main_loop(status):
         except KeyboardInterrupt:
             # Exit the loop if Ctrl+C is pressed
             break
-        except Exception as e:
-            logging.error(f"Unhandled exception {e}")
-            sleep(1)
+        #except Exception as e:
+        #    logging.error(f"Unhandled exception {e}")
+        #    sleep(1)
 
 
 if __name__ == '__main__':
