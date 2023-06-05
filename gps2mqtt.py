@@ -35,10 +35,28 @@ class Status:
 
         self._zm_api = _zm_api
 
+        if(_zm_api['enabled']):
+            self.zm_connect()
+
+    def zm_connect(self):
+        # Establish a Telnet connection
+        try:
+            logging.debug(f"Connecting telnet {_zm_api['host']}:{_zm_api['port']}")
+            self._tn = telnetlib.Telnet(_zm_api['host'], _zm_api['port'])
+            logging.debug("Telnet connected!")
+        except Exception as e:
+            logging.error("Unable to connect zoneminder. Is zmtrigger running?")
+            self._tn = None
+
     # Getter for 'gpsd' object
     @property
     def gpsd(self):
         return _gpsd
+
+    # Getter for 'tn' object
+    @property
+    def tn(self):
+        return self._tn
 
     # Getter for 'geolocator' object
     @property
@@ -93,30 +111,28 @@ def get_speed_limit(latitude, longitude):
     else:
         return 0
 
-
-def update_zm(status, string):
-    try:
-        if status.zm_api['enabled']:
-            send_raw_text_via_telnet(status, f"{string}")
-    except:
-        logging.error(f"Unable to connect zoneminder. Check your settings.")
-
-def send_raw_text_via_telnet(status, text):
+def update_zm(status, text, retry=True):
     host = status.zm_api['host']
     port = status.zm_api['port']
 
     i = 0
     for m in status.zm_api['monitors']:
-        # Establish a Telnet connection
-        logging.debug(f"connecting {host}:{port}")
-        tn = telnetlib.Telnet(host, port)
+
         payload = f"{m[i]}|show||||{text}".encode('utf-8')
         # Send raw text
-        tn.write(payload + b'\r\n')  # Sending as ASCII, adding carriage return and newline
+        try:
+            status.tn.write(payload + b'\r\n')  # Sending as ASCII, adding carriage return and newline
+            logging.debug(f"Sent: {payload}")
+        except Exception as e:
+            logging.error(f"{e} Reconnecting")
+            if retry == True:
+                status.zm_connect()
+                update_zm(status, text, retry=False)
+                logging.error(f"Unable to send {payload}")
 
-        # Close the Telnet connection
-        tn.close()
         i += 1
+    
+    return status
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
@@ -287,9 +303,10 @@ def main_loop(status):
                     # Publish the JSON data to each MQTT broker
                     logging.debug(f"Brokers: {status.brokers}")
 
-                    if round(previous_speed) != round(speed):
-                        update_zm(status, f"{street} {city} {round(speed)} km/h")
-                        previous_speed = speed
+                    if status.tn:
+                        if round(previous_speed) != round(speed):
+                            status = update_zm(status, f"{street} {city} {round(speed)} km/h")
+                            previous_speed = speed
 
                     for brokers in status.brokers:
                         if status.last_connect_fail > 0 and time() - status.last_connect_fail > MQTT_RETRY_CONNECT:
