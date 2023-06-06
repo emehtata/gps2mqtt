@@ -10,7 +10,8 @@ from time import sleep, time
 import gpsd as _gpsd
 import paho.mqtt.client as mqtt
 from geopy.geocoders import Nominatim
-from gpiozero import Button
+# TODO: cli option to enable hw reset switch
+# from gpiozero import Button
 from settings import DEGREE_THRESHOLD, SPEED_THRESHOLD, TIME_THRESHOLD, MQTT_RETRY_CONNECT, _brokers, _mqtt_topic, _zm_api
 
 logging.basicConfig(
@@ -47,6 +48,26 @@ class Status:
         except Exception as e:
             logging.error("Unable to connect zoneminder. Is zmtrigger running?")
             self._tn = None
+
+    def update_zm(self, text, retry=True):
+        host = self._zm_api['host']
+        port = self._zm_api['port']
+
+        i = 0
+        for m in self._zm_api['monitors']:
+            text = convert_umlaut_characters(text)
+            payload = f"{m[i]}|show||||{text}".encode('utf-8')
+            # Send raw text
+            try:
+                self._tn.write(payload + b'\r\n')  # Sending as ASCII, adding carriage return and newline
+                logging.debug(f"Sent: {payload}")
+            except Exception as e:
+                logging.error(f"{e} Reconnecting")
+                if retry == True:
+                    self.zm_connect()
+                    self.update_zm(text, retry=False)
+                    logging.error(f"Unable to send {payload}")
+            i += 1
 
     # Getter for 'gpsd' object
     @property
@@ -111,13 +132,20 @@ def get_speed_limit(latitude, longitude):
     else:
         return 0
 
+def convert_umlaut_characters(text):
+    conversion_table = {
+        'Å': 'A', 'Ä': 'A', 'Ö': 'O', 'Ü': 'U',
+        'å': 'a', 'ä': 'a', 'ö': 'o', 'ü': 'u'
+    }
+    return ''.join(conversion_table.get(char, char) for char in text)
+
 def update_zm(status, text, retry=True):
     host = status.zm_api['host']
     port = status.zm_api['port']
 
     i = 0
     for m in status.zm_api['monitors']:
-
+        text = convert_umlaut_characters(text)
         payload = f"{m[i]}|show||||{text}".encode('utf-8')
         # Send raw text
         try:
@@ -131,7 +159,7 @@ def update_zm(status, text, retry=True):
                 logging.error(f"Unable to send {payload}")
 
         i += 1
-    
+
     return status
 
 def on_connect(client, userdata, flags, rc):
@@ -303,10 +331,9 @@ def main_loop(status):
                     # Publish the JSON data to each MQTT broker
                     logging.debug(f"Brokers: {status.brokers}")
 
-                    if status.tn:
-                        if round(previous_speed) != round(speed):
-                            status = update_zm(status, f"{street} {city} {round(speed)} km/h")
-                            previous_speed = speed
+                    if ( status.zm_api['enabled'] and round(previous_speed) != round(speed) ) or 'DEBUG' in os.environ:
+                        status.update_zm(f"{str(round(speed)).rjust(3)} km/h {street} {postcode} {city}")
+                        previous_speed = speed
 
                     for brokers in status.brokers:
                         if status.last_connect_fail > 0 and time() - status.last_connect_fail > MQTT_RETRY_CONNECT:
