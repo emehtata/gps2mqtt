@@ -1,8 +1,9 @@
 # Constants
-SPEED_THRESHOLD = 3 # km/h
+SPEED_THRESHOLD = 1 # km/h
 DEGREE_THRESHOLD = 15  # Minimum bearing change (degrees)
 TIME_THRESHOLD = 30  # Minimum time threshold (seconds)
 MQTT_RETRY_CONNECT = 10 # Seconds to wait for next retry to connect to MQTT broker
+BUFFERS_SIZE = 3 # Buffer size for speed and bearing
 
 # MQTT brokers details
 _brokers = [

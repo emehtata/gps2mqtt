@@ -3,16 +3,19 @@
 import json
 import logging
 import os
-import requests
 import telnetlib
 from time import sleep, time
 
 import gpsd as _gpsd
 import paho.mqtt.client as mqtt
+import requests
 from geopy.geocoders import Nominatim
+
 # TODO: cli option to enable hw reset switch
 # from gpiozero import Button
-from settings import DEGREE_THRESHOLD, SPEED_THRESHOLD, TIME_THRESHOLD, MQTT_RETRY_CONNECT, _brokers, _mqtt_topic, _zm_api
+from settings import (BUFFERS_SIZE, DEGREE_THRESHOLD, MQTT_RETRY_CONNECT,
+                      SPEED_THRESHOLD, TIME_THRESHOLD, _brokers, _mqtt_topic,
+                      _zm_api)
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)-8s %(message)s',
@@ -20,6 +23,7 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S')
 if 'DEBUG' in os.environ:
     logging.getLogger().setLevel(logging.DEBUG)
+
 
 class Status:
     def __init__(self):
@@ -36,18 +40,39 @@ class Status:
 
         self._zm_api = _zm_api
 
-        if(_zm_api['enabled']):
+        self._speed_buffer = []
+        self._bearing_buffer = []
+
+        if (_zm_api['enabled']):
             self.zm_connect()
 
     def zm_connect(self):
         # Establish a Telnet connection
         try:
-            logging.debug(f"Connecting telnet {_zm_api['host']}:{_zm_api['port']}")
+            logging.debug(
+                f"Connecting telnet {_zm_api['host']}:{_zm_api['port']}")
             self._tn = telnetlib.Telnet(_zm_api['host'], _zm_api['port'])
             logging.debug("Telnet connected!")
         except Exception as e:
-            logging.error("Unable to connect zoneminder. Is zmtrigger running?")
+            logging.error(
+                "Unable to connect zoneminder. Is zmtrigger running?")
             self._tn = None
+
+    def update_buffers(self, speed, bearing):
+        self._speed_buffer.append(speed)
+        self._bearing_buffer.append(bearing)
+        logging.debug(f"speed: {self._speed_buffer} bearing: {self._bearing_buffer}")
+        if len(self._speed_buffer) > BUFFERS_SIZE:
+            self._speed_buffer.pop(0)
+            self._bearing_buffer.pop(0)
+            average_speed = sum(self._speed_buffer) / len(self._speed_buffer)
+            bearing_difference = abs( max(self._bearing_buffer) - \
+                min(self._bearing_buffer) + 360 ) - 360
+            logging.debug(f"speed: {self._speed_buffer} ({average_speed}), bearing: {self._bearing_buffer} ({bearing_difference})")
+            return average_speed, bearing_difference
+
+        return -1, -1
+
 
     def update_zm(self, text, retry=True):
         host = self._zm_api['host']
@@ -59,7 +84,8 @@ class Status:
             payload = f"{m[i]}|show||||{text}".encode('utf-8')
             # Send raw text
             try:
-                self._tn.write(payload + b'\r\n')  # Sending as ASCII, adding carriage return and newline
+                # Sending as ASCII, adding carriage return and newline
+                self._tn.write(payload + b'\r\n')
                 logging.debug(f"Sent: {payload}")
             except Exception as e:
                 logging.error(f"{e} Reconnecting")
@@ -117,20 +143,24 @@ def perform_reverse_geocoding(status, latitude, longitude):
     return None
 
 def get_speed_limit(latitude, longitude):
-    url = f"https://api.openstreetmap.org/api/0.6/map?bbox={longitude-0.001},{latitude-0.001},{longitude+0.001},{latitude+0.001}"
+    url = f"https://overpass-api.de/api/interpreter?data=[out:json];way[maxspeed](around:30,{latitude},{longitude});out;"
     response = requests.get(url)
+    logging.debug(f"{response}")
     if response.status_code == 200:
-        xml_data = response.content
-        xml_string = xml_data.decode('utf-8')
+        json_data = response.json()
+        logging.debug(f"{json_data}")
+        elements = json_data.get('elements', [])
         speed_limit = 0
-        # logging.debug(xml_string)
-        for line in xml_string.splitlines():
-            if "<tag k=\"maxspeed\" v=" in line:
-                speed_limit = line.split("\"")[3]
+        for element in elements:
+            tags = element.get('tags', {})
+            maxspeed = tags.get('maxspeed')
+            if maxspeed:
+                speed_limit = maxspeed
                 break
         return speed_limit
     else:
         return 0
+
 
 def convert_umlaut_characters(text):
     conversion_table = {
@@ -138,6 +168,7 @@ def convert_umlaut_characters(text):
         'å': 'a', 'ä': 'a', 'ö': 'o', 'ü': 'u'
     }
     return ''.join(conversion_table.get(char, char) for char in text)
+
 
 def update_zm(status, text, retry=True):
     host = status.zm_api['host']
@@ -149,7 +180,8 @@ def update_zm(status, text, retry=True):
         payload = f"{m[i]}|show||||{text}".encode('utf-8')
         # Send raw text
         try:
-            status.tn.write(payload + b'\r\n')  # Sending as ASCII, adding carriage return and newline
+            # Sending as ASCII, adding carriage return and newline
+            status.tn.write(payload + b'\r\n')
             logging.debug(f"Sent: {payload}")
         except Exception as e:
             logging.error(f"{e} Reconnecting")
@@ -161,6 +193,7 @@ def update_zm(status, text, retry=True):
         i += 1
 
     return status
+
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
@@ -179,16 +212,19 @@ def on_disconnect(client, userdata, rc):
 
 # Main loop to continuously read GPS data
 
+
 def retry_mqtt_connect(status):
     conn_ok = True
     b = 0
     for broker in status.brokers:
         try:
             if not broker['connected']:
-                status.brokers[b]['client'].connect(broker['host'], port=broker['port'])
+                status.brokers[b]['client'].connect(
+                    broker['host'], port=broker['port'])
                 status.brokers[b]['client'].loop_start()
                 status.brokers[b]['connected'] = True
-                logging.info(f"Connection successful: {broker['host']}:{broker['port']}")
+                logging.info(
+                    f"Connection successful: {broker['host']}:{broker['port']}")
         except OSError:
             logging.error(
                 f"Could not connect: {broker['host']}:{broker['port']}")
@@ -205,15 +241,17 @@ def retry_mqtt_connect(status):
 
     return status
 
+
 def connect_brokers(status):
     i = 0
     b = 0
     for broker in status.brokers:
         try:
-            status.brokers[b]['client']=mqtt.Client()
+            status.brokers[b]['client'] = mqtt.Client()
             status.brokers[b]['client'].on_connect = on_connect
             status.brokers[b]['client'].on_publish = on_publish
-            status.brokers[b]['client'].connect(broker['host'], port=broker['port'])
+            status.brokers[b]['client'].connect(
+                broker['host'], port=broker['port'])
             status.brokers[b]['client'].loop_start()
             status.brokers[b]['connected'] = True
             i += 1
@@ -224,7 +262,8 @@ def connect_brokers(status):
         b += 1
 
     if i == 0:
-        logging.error(f"Could not connect any of the MQTT brokers: {status.brokers}")
+        logging.error(
+            f"Could not connect any of the MQTT brokers: {status.brokers}")
         raise OSError
 
     if i == b:
@@ -235,6 +274,8 @@ def connect_brokers(status):
     logging.debug(f"Brokers: {status.brokers}")
 
     return status
+
+
 '''
 def restart_program():
     python = sys.executable
@@ -245,13 +286,13 @@ def button_pressed():
     print("Microswitch pressed. Restarting.")
     restart_program()
 '''
+
+
 def main_loop(status):
     status = connect_brokers(status)
     speed_limit = 0
     street = city = country = postcode = ''
-    bearing_time = None
     previous_speed = -1
-    previous_bearing = None
     previous_time = None
     '''
     # Define the GPIO pin number
@@ -278,10 +319,11 @@ def main_loop(status):
                         speed = 0
                     bearing = packet.track
                     gps_time = packet.time
+                    average_speed, bearing_difference = status.update_buffers(
+                        speed, bearing)
 
-                    if (previous_bearing is None or
-                        (speed > 0 and abs(bearing - previous_bearing) >= DEGREE_THRESHOLD) or
-                            (speed > 0 and previous_time is not None and time() - previous_time >= TIME_THRESHOLD)):
+                    if (bearing_difference >= DEGREE_THRESHOLD or (average_speed > 0 and (time() - previous_time >= TIME_THRESHOLD)) or
+                        (average_speed < 0 )):
                         address = perform_reverse_geocoding(
                             status, latitude, longitude)
                         if address:
@@ -290,8 +332,6 @@ def main_loop(status):
                             postcode = address.get('postcode', '')
                             country = address.get('country_code', '')
                         speed_limit = get_speed_limit(latitude, longitude)
-                        previous_bearing = bearing
-                        bearing_time = time()
 
                     if hasattr(packet, 'alt') and hasattr(packet, 'climb'):
                         altitude = packet.alt
@@ -305,7 +345,7 @@ def main_loop(status):
                         'longitude': longitude,
                         'altitude': altitude,
                         'climb': climb,
-                        'speed': round(speed,1),
+                        'speed': round(average_speed, 1),
                         'bearing': bearing,
                         'gps_accuracy': packet.position_precision()[0],
                         'street': street,
@@ -323,17 +363,14 @@ def main_loop(status):
                     logging.debug(f"{data}")
                     # Convert the JSON object to a string
                     json_data = json.dumps(data)
-                    if bearing_time is None or time() - bearing_time > 5:
-                        logging.debug(f"Storing previous bearing.")
-                        previous_bearing = bearing
-                        bearing_time = time()
                     previous_time = time()
                     # Publish the JSON data to each MQTT broker
                     logging.debug(f"Brokers: {status.brokers}")
 
-                    if ( status.zm_api['enabled'] and round(previous_speed) != round(speed) ) or 'DEBUG' in os.environ:
-                        status.update_zm(f"{str(round(speed)).rjust(3)} km/h {street} {postcode} {city}")
-                        previous_speed = speed
+                    if (status.zm_api['enabled'] and round(previous_speed) != round(average_speed)) or 'DEBUG' in os.environ:
+                        status.update_zm(
+                            f"{str(round(speed)).rjust(3)} km/h {street} {postcode} {city}")
+                        previous_speed = average_speed
 
                     for brokers in status.brokers:
                         if status.last_connect_fail > 0 and time() - status.last_connect_fail > MQTT_RETRY_CONNECT:
@@ -345,7 +382,7 @@ def main_loop(status):
         except KeyboardInterrupt:
             # Exit the loop if Ctrl+C is pressed
             break
-        #except Exception as e:
+        # except Exception as e:
         #    logging.error(f"Unhandled exception {e}")
         #    sleep(1)
 
