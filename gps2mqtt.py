@@ -4,6 +4,9 @@ import json
 import logging
 import os
 import telnetlib
+from geographiclib.geodesic import Geodesic
+
+from math import atan2, cos, degrees, radians, sin
 from time import sleep, time
 
 import gpsd as _gpsd
@@ -43,6 +46,11 @@ class Status:
         self._speed_buffer = []
         self._bearing_buffer = []
 
+        self._data = {}
+
+        if 'SIMGPS' in os.environ:
+            self._mqtt_topic = f"test-{self._mqtt_topic}"
+
         if (_zm_api['enabled']):
             self.zm_connect()
 
@@ -61,18 +69,20 @@ class Status:
     def update_buffers(self, speed, bearing):
         self._speed_buffer.append(speed)
         self._bearing_buffer.append(bearing)
-        logging.debug(f"speed: {self._speed_buffer} bearing: {self._bearing_buffer}")
+
         if len(self._speed_buffer) > BUFFERS_SIZE:
             self._speed_buffer.pop(0)
             self._bearing_buffer.pop(0)
             average_speed = sum(self._speed_buffer) / len(self._speed_buffer)
-            bearing_difference = abs( max(self._bearing_buffer) - \
-                min(self._bearing_buffer) + 360 ) - 360
-            logging.debug(f"speed: {self._speed_buffer} ({average_speed}), bearing: {self._bearing_buffer} ({bearing_difference})")
+            bearing_difference = abs(
+                self._bearing_buffer[0] - self._bearing_buffer[BUFFERS_SIZE-1])
+            if bearing_difference > 180:
+                bearing_difference = 360 - bearing_difference
+            logging.debug(
+                f"speed: {self._speed_buffer} ({average_speed}), bearing: {self._bearing_buffer} ({bearing_difference})")
             return average_speed, bearing_difference
 
         return -1, -1
-
 
     def update_zm(self, text, retry=True):
         host = self._zm_api['host']
@@ -132,8 +142,29 @@ class Status:
     def zm_api(self):
         return self._zm_api
 
-# Function to perform reverse geocoding
+    @property
+    def data(self):
+        return self._data
 
+    @data.setter
+    def data(self, contents):
+        self._data = contents
+
+
+    def calculate_bearing(self, lat1, lon1):
+        # Calculate bearing based on difference to previous coordinates
+        try:
+            lat2 = self._data['latitude']
+            lon2 = self._data['longitude']
+        except KeyError:
+            logging.debug("uninitialized data")
+            return 0
+        inverse_data = Geodesic.WGS84.Inverse(lat1, lon1, lat2, lon2)
+        logging.debug(f"{inverse_data}")
+        brng = inverse_data['azi1'] + 180
+        return brng
+
+# Function to perform reverse geocoding
 
 def perform_reverse_geocoding(status, latitude, longitude):
     location = status.geolocator.reverse((latitude, longitude))
@@ -141,6 +172,7 @@ def perform_reverse_geocoding(status, latitude, longitude):
         address = location.raw.get('address', {})
         return address
     return None
+
 
 def get_speed_limit(latitude, longitude):
     url = f"https://overpass-api.de/api/interpreter?data=[out:json];way[maxspeed](around:30,{latitude},{longitude});out;"
@@ -312,18 +344,20 @@ def main_loop(status):
             if packet.mode >= 2:  # Valid data in 2D or 3D fix
                 if hasattr(packet, 'lat') and hasattr(packet, 'lon'):
                     # Get latitude, longitude, speed, and bearing
+
                     latitude = packet.lat
                     longitude = packet.lon
                     speed = packet.hspeed * 3.6
                     if speed < SPEED_THRESHOLD:
                         speed = 0
-                    bearing = packet.track
+                    # We may have error. Calculate bearing.
+                    bearing = status.calculate_bearing(latitude, longitude)
                     gps_time = packet.time
                     average_speed, bearing_difference = status.update_buffers(
                         speed, bearing)
 
                     if (bearing_difference >= DEGREE_THRESHOLD or (average_speed > 0 and (time() - previous_time >= TIME_THRESHOLD)) or
-                        (average_speed < 0 )):
+                            (average_speed < 0)):
                         address = perform_reverse_geocoding(
                             status, latitude, longitude)
                         if address:
@@ -340,7 +374,7 @@ def main_loop(status):
                         altitude = climb = 0
 
                     # Create a JSON object
-                    data = {
+                    status.data = {
                         'latitude': latitude,
                         'longitude': longitude,
                         'altitude': altitude,
@@ -360,14 +394,14 @@ def main_loop(status):
                         'climb': climb,
                         'room': 'car'
                     }
-                    logging.debug(f"{data}")
+                    logging.debug(f"{status.data}")
                     # Convert the JSON object to a string
-                    json_data = json.dumps(data)
+                    json_data = json.dumps(status.data)
                     previous_time = time()
                     # Publish the JSON data to each MQTT broker
                     logging.debug(f"Brokers: {status.brokers}")
 
-                    if (status.zm_api['enabled'] and round(previous_speed) != round(average_speed)) or 'DEBUG' in os.environ:
+                    if (status.zm_api['enabled'] and round(previous_speed) != round(average_speed)):
                         status.update_zm(
                             f"{str(round(speed)).rjust(3)} km/h {street} {postcode} {city}")
                         previous_speed = average_speed
@@ -375,6 +409,7 @@ def main_loop(status):
                     for brokers in status.brokers:
                         if status.last_connect_fail > 0 and time() - status.last_connect_fail > MQTT_RETRY_CONNECT:
                             status = retry_mqtt_connect(status)
+                        logging.info(f"Topic: {status.mqtt_topic}")
                         brokers['client'].publish(status.mqtt_topic, json_data)
             else:
                 logging.info(f"Waiting for valid data. ({packet.mode} < 2)")
