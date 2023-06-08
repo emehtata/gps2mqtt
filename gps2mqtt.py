@@ -234,11 +234,13 @@ def main_loop(status):
                          (average_speed < 0) ):
                         address = helpers.perform_reverse_geocoding(
                             status, latitude, longitude)
+                        logging.info(f"{address}")
                         if address:
                             street = address.get('road', '')
                             city = address.get('city', '')
                             postcode = address.get('postcode', '')
                             country = address.get('country_code', '')
+                            suburb = address.get('suburb')
                             status.last_address_fetch = time()
                         speed_limit = helpers.get_speed_limit(latitude, longitude)
 
@@ -259,6 +261,7 @@ def main_loop(status):
                         'gps_accuracy': packet.position_precision()[0],
                         'street': street,
                         'postcode': postcode,
+                        'suburb': suburb,
                         'city': city,
                         'country': country,
                         'time': gps_time,
@@ -278,7 +281,7 @@ def main_loop(status):
 
                     if (status.zm_api['enabled'] and round(previous_speed) != round(average_speed)):
                         status.update_zm(
-                            f"{str(round(speed)).rjust(3)} km/h {street} {postcode} {city}")
+                            f"{str(round(speed)).rjust(3)} km/h {street} {postcode} {suburb} {city} {country}")
                         previous_speed = average_speed
 
                     for brokers in status.brokers:
