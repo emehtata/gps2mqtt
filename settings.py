@@ -19,5 +19,5 @@ _zm_api = {
     "host": "192.168.7.8",
     "port": "6802",
     "enabled": True,
-    "monitors": [ "4" ]
+    "monitors": [ "3" ]
 }

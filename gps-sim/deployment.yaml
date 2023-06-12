@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gps-sim-deployment
+spec:
+  selector:
+    matchLabels:
+      app: gps-sim
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: gps-sim
+    spec:
+      containers:
+      - name: gps-sim
+        image: iotechsys/gps-sim:1.0
+        args:
+        - "-v"
+        - "-c"
+        - "0.33"
+        - "/sim-files/trace.nmea"
+        volumeMounts:
+        - name: sim-files-volume
+          mountPath: /sim-files
+      volumes:
+      - name: sim-files-volume
+        hostPath:
+          path: /opt/gps2mqtt/gps-sim/sim-files
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+
