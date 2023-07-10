@@ -4,6 +4,8 @@ import json
 import logging
 import os
 import telnetlib
+import random
+
 from time import sleep, time
 
 import gpsd as _gpsd
@@ -25,13 +27,16 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S')
 if 'DEBUG' in os.environ:
     logging.getLogger().setLevel(logging.INFO)
-    if os.environ['DEBUG'] == 2:
+    if os.environ['DEBUG'] == '2':
         logging.getLogger().setLevel(logging.DEBUG)
 
 
 class Status:
+
     def __init__(self):
-        self._geolocator = Nominatim(user_agent='ha_address_finder')
+        user_agent = ''.join(random.choice('abcdefghijklmnopqrstuvwxyz_') for _ in range(16))
+        logging.info(f"User agent {user_agent}")
+        self._geolocator = Nominatim(user_agent=user_agent)
 
         # Connect to gpsd
         self.gpsd.connect()
@@ -95,10 +100,9 @@ class Status:
         host = self._zm_api['host']
         port = self._zm_api['port']
 
-        i = 0
         for m in self._zm_api['monitors']:
             text = helpers.convert_umlaut_characters(text)
-            payload = f"{m[i]}|show||||{text}".encode('utf-8')
+            payload = f"{m}|show||||{text}".encode('utf-8')
             # Send raw text
             try:
                 # Sending as ASCII, adding carriage return and newline
@@ -110,7 +114,6 @@ class Status:
                     self.zm_connect()
                     self.update_zm(text, retry=False)
                     logging.error(f"Unable to send {payload}")
-            i += 1
 
     def calculate_bearing(self, lat1, lon1):
         # Calculate bearing based on difference to previous coordinates
@@ -123,7 +126,7 @@ class Status:
         inverse_data = Geodesic.WGS84.Inverse(lat1, lon1, lat2, lon2)
         logging.debug(f"{inverse_data}")
         brng = inverse_data['azi1'] + 180
-        return brng  
+        return brng
 
     # Getter for 'gpsd' object
     @property
