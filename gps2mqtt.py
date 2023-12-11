@@ -3,7 +3,6 @@
 import json
 import logging
 import os
-import telnetlib
 import random
 
 from time import sleep, time
@@ -20,6 +19,9 @@ from settings import (BEARING_BUFFER_SIZE, DEGREE_THRESHOLD,
                       MQTT_RETRY_CONNECT, SPEED_BUFFER_SIZE, SPEED_THRESHOLD,
                       STREET_THRESHOLD, TIME_THRESHOLD, _brokers, _mqtt_topic,
                       _zm_api)
+if _zm_api['enabled']:
+    import telnetlib
+
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)-8s %(message)s',

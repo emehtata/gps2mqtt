@@ -9,15 +9,15 @@ STREET_THRESHOLD = 30 # Max seconds if no address has been fetched
 
 # MQTT brokers details
 _brokers = [
-    {'host': '192.168.7.8', 'port':  1883, 'client': None, 'connected': False },
-    {'host': 'localhost', 'port': 1883, 'client': None, 'connected': False }
+    {'host': '192.168.7.186', 'port':  1883, 'client': None, 'connected': False }
+    # {'host': 'localhost', 'port': 1883, 'client': None, 'connected': False }
 ]
 _mqtt_topic = 'gps_module/attributes'
 
 # Zoneminder overlay
 _zm_api = {
-    "host": "192.168.7.8",
-    "port": "6802",
-    "enabled": True,
-    "monitors": [ "3" ]
+   "host": "192.168.7.8",
+   "port": "6802",
+   "enabled": False,
+   "monitors": [ "3" ]
 }
