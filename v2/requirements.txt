@@ -1,0 +1,2 @@
+gpsd-py3
+paho-mqtt
