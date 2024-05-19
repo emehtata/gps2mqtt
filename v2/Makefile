@@ -3,7 +3,7 @@ ARCH := $(shell uname -m)
 IMAGE_NAME = gps-mqtt-app
 CONTAINER_NAME = gps-mqtt-app
 REPO_ADDRESS = localhost:5000
-BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 TAG := $(IMAGE_NAME):$(ARCH)-$(BRANCH)
 
 # Build the Docker image

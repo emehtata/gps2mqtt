@@ -1,24 +1,29 @@
 #!/bin/bash
-SLEEPFOR=${SLEEPFOR:-1}
-# Wait for 3 minutes after boot
-sleep $SLEEPFOR
+
+# Check if a branch name is provided
+if [ -z "$1" ]; then
+  echo "Usage: $0 <branch-name>"
+  exit 1
+fi
+
+BRANCH=$1
 
 # Change to the directory where your code is located
-cd v2 || exit
+cd v2
 
-# Pull the latest changes from the GitHub repository
-git fetch -a
+# Pull the latest changes from the specified branch
+git fetch origin $BRANCH
 LOCAL_COMMIT=$(git rev-parse HEAD)
-REMOTE_COMMIT=$(git rev-parse origin)
+REMOTE_COMMIT=$(git rev-parse origin/$BRANCH)
 
 if [ "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]; then
-    git pull
+    git pull origin $BRANCH
 
     if [ $? -eq 0 ]; then
         echo "Updates found and applied. Building new Docker image using Makefile..."
 
         # Use the Makefile to build, push, and run the Docker image
-        make restart
+        make BRANCH=$BRANCH restart
 
         echo "New Docker image built and container restarted."
     else
