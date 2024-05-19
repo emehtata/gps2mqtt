@@ -1,0 +1,50 @@
+pipeline {
+    agent any
+
+    environment {
+        REPO_ADDRESS = 'localhost:5000'
+        ARCH = sh(script: 'uname -m', returnStdout: true).trim()
+        BRANCH = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+        IMAGE_NAME = "gps-mqtt-app"
+        TAG = "${IMAGE_NAME}:${ARCH}-${BRANCH}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/emehtata/gps2mqtt.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh 'docker build -t ${TAG} .'
+                    sh 'docker tag ${TAG} ${REPO_ADDRESS}/${TAG}'
+                    if (BRANCH == 'master') {
+                        sh 'docker tag ${TAG} ${REPO_ADDRESS}/${IMAGE_NAME}:${ARCH}-stable'
+                        sh 'docker tag ${TAG} ${REPO_ADDRESS}/${IMAGE_NAME}:stable'
+                    } else if (BRANCH == 'dev') {
+                        sh 'docker tag ${TAG} ${REPO_ADDRESS}/${IMAGE_NAME}:${ARCH}-latest'
+                        sh 'docker tag ${TAG} ${REPO_ADDRESS}/${IMAGE_NAME}:latest'
+                    }
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    sh 'docker push ${REPO_ADDRESS}/${TAG}'
+                    if (BRANCH == 'master') {
+                        sh 'docker push ${REPO_ADDRESS}/${IMAGE_NAME}:${ARCH}-stable'
+                        sh 'docker push ${REPO_ADDRESS}/${IMAGE_NAME}:stable'
+                    } else if (BRANCH == 'dev') {
+                        sh 'docker push ${REPO_ADDRESS}/${IMAGE_NAME}:${ARCH}-latest'
+                        sh 'docker push ${REPO_ADDRESS}/${IMAGE_NAME}:latest'
+                    }
+                }
+            }
+        }
+    }
+}
