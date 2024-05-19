@@ -19,22 +19,6 @@ ifeq ($(BRANCH),dev)
 	docker tag $(TAG) $(REPO_ADDRESS)/$(IMAGE_NAME):latest
 endif
 
-# Run the Docker container
-run:
-	docker run -d --name $(CONTAINER_NAME) --network host $(REPO_ADDRESS)/$(TAG)
-
-# Start the Docker container if it has been stopped
-start:
-	docker start $(CONTAINER_NAME)
-
-# Stop the Docker container
-stop:
-	docker stop $(CONTAINER_NAME)
-
-# Remove the Docker container
-remove:
-	docker rm $(CONTAINER_NAME)
-
 # Push the Docker image to the repository
 push:
 	docker push $(REPO_ADDRESS)/$(TAG)
@@ -47,5 +31,24 @@ ifeq ($(BRANCH),dev)
 	docker push $(REPO_ADDRESS)/$(IMAGE_NAME):latest
 endif
 
-# Rebuild the Docker image and restart the container
-restart: stop remove build push run
+# Stop the Docker container
+stop:
+	docker stop $(CONTAINER_NAME) || true
+
+# Remove the Docker container
+remove:
+	docker rm $(CONTAINER_NAME) || true
+
+# Run the Docker container
+run:
+	docker run -d --name $(CONTAINER_NAME) --network host $(REPO_ADDRESS)/$(TAG)
+
+# Cleanup old Docker images
+cleanup:
+	# Remove all images except the ones matching the current tag
+	docker image prune -f
+	# Optional: remove dangling images and unused images
+	docker image prune -af --filter "until=24h"
+
+# Rebuild the Docker image, push it, and restart the container
+restart: build push stop remove run cleanup
