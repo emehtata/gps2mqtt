@@ -91,7 +91,7 @@ class Status:
                 max(self._bearing_buffer) - min(self._bearing_buffer) )
 
             if bearing_difference > 180:
-                bearing_difference = 360 - bearing_difference      
+                bearing_difference = 360 - bearing_difference
 
         logging.debug(
             f"speed: {self._speed_buffer} ({average_speed}), bearing: {self._bearing_buffer} ({bearing_difference})")
@@ -184,6 +184,80 @@ class Status:
         self._data = contents
 
 
+def publish_discovery_config(room, found_data):
+    """Publish discovery configuration to Home Assistant.
+
+    Args:
+        room (str): The room identifier.
+        found_data (tuple): Tuple containing room identifier and sensor data.
+
+    Returns:
+        None
+    """
+    jdata = found_data[1]
+
+    sendvals = {
+        "latitude": {"class": None, "unit": "°"},
+        "longitude": {"class": None, "unit": "°"},
+        "altitude": {"class": None, "unit": "m"},
+        "climb": {"class": None, "unit": "m"},
+        "speed": {"class": None, "unit": "km/h"},
+        "bearing": {"class": None, "unit": "°"},
+        "gps_accuracy": {"class": None, "unit": "m"},
+        "street": {"class": None, "unit": None},
+        "postcode}": {"class": None, "unit": None},
+        "suburb": {"class": None, "unit": None},
+        "city": {"class": None, "unit": None},
+        "country": {"class": None, "unit": None},
+        "time": {"class": None, "unit": None},
+        "satellites": {"class": None, "unit": None},
+        "mqtt_fail": {"class": None, "unit": None},
+        "speed_limit": {"class": None, "unit": None},
+        "room": {"class": None, "unit": None}
+    }
+
+    for s in sendvals:
+        payload = {
+            "state_topic": f"home/{room}",
+            "unit_of_measurement": f"{sendvals[s]['unit']}",
+            "value_template": "{{ value_json." + s + " }}",
+            "unique_id": f"ruuvi{jdata['mac']}{s}",
+            "object_id": f"{room}_{s}",
+            "name": f"{s}",
+            "device": {
+                "identifiers": [
+                    f"{room}"
+                ],
+                "name": f"{room}",
+                "manufacturer": "Ruuvi",
+                "model": "Ruuvitag"
+            }
+        }
+        if sendvals[s]['class'] is not None:
+            payload.update({"device_class": f"{sendvals[s]['class']}"})
+        topic = f"homeassistant/sensor/{room}_{s}/config"
+        my_data = json.dumps(payload).replace("'", '"')
+        logging.info(f"{topic}: {my_data}")
+        for b in brokers:
+            clients[b].publish(topic, my_data)
+
+def on_message(client, userdata, msg):
+    """MQTT on_message callback function.
+
+    Args:
+        client (mqtt.Client): The MQTT client.
+        userdata: The user data.
+        msg (mqtt.MQTTMessage): The received MQTT message.
+
+    Returns:
+        None
+    """
+    global found_ruuvis
+    payload = msg.payload.decode()
+    logging.info(f"Received message on topic {msg.topic}: {payload}")
+    if payload == "online":
+        found_ruuvis = []
+
 '''
 def restart_program():
     python = sys.executable
@@ -233,9 +307,9 @@ def main_loop(status):
                     average_speed, bearing_difference = status.update_buffers(
                         speed, bearing)
 
-                    if ( (bearing_difference >= DEGREE_THRESHOLD and status.last_address_fetch - time() > BEARING_BUFFER_SIZE) or 
+                    if ( (bearing_difference >= DEGREE_THRESHOLD and status.last_address_fetch - time() > BEARING_BUFFER_SIZE) or
                          (time() - status.last_address_fetch > STREET_THRESHOLD) or
-                         (average_speed > 0 and (time() - previous_time >= TIME_THRESHOLD)) or 
+                         (average_speed > 0 and (time() - previous_time >= TIME_THRESHOLD)) or
                          (average_speed < 0) ):
                         address = helpers.perform_reverse_geocoding(
                             status, latitude, longitude)
@@ -273,8 +347,6 @@ def main_loop(status):
                         'satellites': packet.sats,
                         'mqtt_fail': status.last_connect_fail,
                         'speed_limit': speed_limit,
-                        'altitude': altitude,
-                        'climb': climb,
                         'room': 'car'
                     }
                     logging.info(f"{status.data}")
