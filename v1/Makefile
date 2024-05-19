@@ -3,6 +3,12 @@ IMAGE=gps2mqtt
 NAME=$(IMAGE)
 TAG=localhost:5000/$(IMAGE)-$(MACH)
 
+debug:
+	DEBUG=2 SIMGPS=1 python3 gps2mqtt.py
+
+venv:
+	python3 -m venv .venv
+
 build:
 	docker build . -t $(IMAGE)
 
