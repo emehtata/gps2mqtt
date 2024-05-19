@@ -50,5 +50,5 @@ cleanup:
 	# Optional: remove dangling images and unused images
 	docker image prune -af --filter "until=24h"
 
-# Rebuild the Docker image, push it, and restart the container
-restart: build push stop remove run cleanup
+# Rebuild the Docker image and restart the container
+restart: build stop remove run cleanup
