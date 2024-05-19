@@ -4,7 +4,7 @@ pipeline {
     environment {
         REPO_ADDRESS = 'localhost:5000'
         ARCH = sh(script: 'uname -m', returnStdout: true).trim()
-        BRANCH = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+        BRANCH = ${BRANCH_NAME}
         IMAGE_NAME = "gps-mqtt-app"
         TAG = "${IMAGE_NAME}:${ARCH}-${BRANCH}"
     }
