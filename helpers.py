@@ -5,6 +5,7 @@ from time import time
 
 import paho.mqtt.client as mqtt
 import requests
+import json
 
 # Function to perform reverse geocoding
 
@@ -70,13 +71,77 @@ def update_zm(status, text, retry=True):
 
     return status
 
+def publish_discovery_config(room, found_data):
+    """Publish discovery configuration to Home Assistant.
+
+    Args:
+        room (str): The room identifier.
+        found_data (tuple): Tuple containing room identifier and sensor data.
+
+    Returns:
+        None
+    """
+    jdata = found_data[1]
+
+    sendvals = {
+        "latitude": {"class": None, "unit": "°"},
+        "longitude": {"class": None, "unit": "°"},
+        "altitude": {"class": None, "unit": "m"},
+        "climb": {"class": None, "unit": "m"},
+        "speed": {"class": None, "unit": "km/h"},
+        "bearing": {"class": None, "unit": "°"},
+        "gps_accuracy": {"class": None, "unit": "m"},
+        "street": {"class": None, "unit": None},
+        "postcode}": {"class": None, "unit": None},
+        "suburb": {"class": None, "unit": None},
+        "city": {"class": None, "unit": None},
+        "country": {"class": None, "unit": None},
+        "time": {"class": None, "unit": None},
+        "satellites": {"class": None, "unit": None},
+        "mqtt_fail": {"class": None, "unit": None},
+        "speed_limit": {"class": None, "unit": None},
+        "room": {"class": None, "unit": None}
+    }
+
+    for s in sendvals:
+        payload = {
+            "state_topic": f"home/{room}",
+            "unit_of_measurement": f"{sendvals[s]['unit']}",
+            "value_template": "{{ value_json." + s + " }}",
+            "unique_id": f"car-gps-0",
+            "object_id": f"{room}_{s}",
+            "name": f"{s}",
+            "device": {
+                "identifiers": [
+                    f"{room}"
+                ],
+                "name": f"{room}",
+                "manufacturer": "Nextblue",
+                "model": "GPS"
+            }
+        }
+        if sendvals[s]['class'] is not None:
+            payload.update({"device_class": f"{sendvals[s]['class']}"})
+        topic = f"homeassistant/sensor/{room}_{s}/config"
+        my_data = json.dumps(payload).replace("'", '"')
+        logging.info(f"{topic}: {my_data}")
+        for b in brokers:
+            clients[b].publish(topic, my_data)
+
+def on_message(client, userdata, msg):
+    global found_ruuvis
+    payload = msg.payload.decode()
+    logging.info(f"Received message on topic {msg.topic}: {payload}")
+    if payload == "online":
+        found_ruuvis = []
 
 def on_connect(client, userdata, flags, rc):
+    logging.info(f"Connected, returned code {rc}")
     if rc == 0:
-        logging.info("Connected to MQTT Broker")
+        logging.info(f"Connected OK Returned code {rc}")
     else:
-        logging.error("Failed to connect, return code: ", rc)
-
+        logging.error(f"Bad connection Returned code {rc}")
+    client.subscribe("homeassistant/status")
 
 def on_publish(client, userdata, mid):
     logging.debug(f"Message published {mid}")
@@ -124,7 +189,8 @@ def connect_brokers(status):
             status.brokers[b]['client'] = mqtt.Client()
             status.brokers[b]['client'].on_connect = on_connect
             status.brokers[b]['client'].on_publish = on_publish
-            status.brokers[b]['client'].connect(
+            status.brokers[b]['client'].on_message = on_message
+            status.brokers[b]['client'].connect_async(
                 broker['host'], port=broker['port'])
             status.brokers[b]['client'].loop_start()
             status.brokers[b]['connected'] = True
