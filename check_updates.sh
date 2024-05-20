@@ -12,12 +12,12 @@ BRANCH=$1
 cd v2
 
 # Pull the latest changes from the specified branch
-git checkout $BRANCH
+git checkout -q $BRANCH
 LOCAL_COMMIT=$(git rev-parse HEAD)
 REMOTE_COMMIT=$(git rev-parse origin/$BRANCH)
 
 if [ "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]; then
-    git pull origin $BRANCH
+    git pull -q origin $BRANCH
 
     if [ $? -eq 0 ]; then
         echo "Updates found and applied. Building new Docker image using Makefile..."
@@ -29,6 +29,4 @@ if [ "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]; then
     else
         echo "Failed to pull updates."
     fi
-else
-    echo "No updates found."
 fi
