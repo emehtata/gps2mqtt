@@ -13,6 +13,7 @@ cd v2
 
 # Pull the latest changes from the specified branch
 git checkout -q $BRANCH
+git fetch -a -p
 LOCAL_COMMIT=$(git rev-parse HEAD)
 REMOTE_COMMIT=$(git rev-parse origin/$BRANCH)
 
