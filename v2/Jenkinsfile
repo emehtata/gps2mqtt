@@ -20,6 +20,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
+                    sh 'ls'
                     sh 'docker build -t ${TAG} .'
                     sh 'docker tag ${TAG} ${REPO_ADDRESS}/${TAG}'
                     if (BRANCH == 'master') {
