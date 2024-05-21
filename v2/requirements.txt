@@ -1,2 +1,2 @@
 gpsd-py3
-paho-mqtt
+paho_mqtt<2.0

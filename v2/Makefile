@@ -6,8 +6,11 @@ REPO_ADDRESS = localhost:5000
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 TAG := $(IMAGE_NAME):$(ARCH)-$(BRANCH)
 
+version:
+	@echo "$(BRANCH)" > VERSION
+	@cat VERSION
 # Build the Docker image
-build:
+build: version
 	docker build -t $(TAG) .
 	docker tag $(TAG) $(REPO_ADDRESS)/$(TAG)
 ifeq ($(BRANCH),master)
@@ -52,3 +55,6 @@ cleanup:
 
 # Rebuild the Docker image and restart the container
 restart: build stop remove run cleanup
+
+debug: version
+	python3 -d app.py
