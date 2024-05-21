@@ -9,7 +9,6 @@ import signal
 import sys
 from settings import brokers
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s [%(funcName)s:%(lineno)d]')
 
 # Read version from VERSION file
@@ -44,9 +43,9 @@ combined_id = f"{hostname}_{unique_id}"
 # Device tracker configuration data
 device_tracker_config = {
     "state_topic": f"gps_module/{combined_id}/state",
-    "name": f"GPS Module {combined_id}",
-    "payload_home": "online",
-    "payload_not_home": "offline",
+    "name": f"gps_module_{combined_id}",
+    "payload_home": "home",
+    "payload_not_home": "not_home",
     "json_attributes_topic": f"gps_module/{combined_id}/attributes",
     "unique_id": f"gps-module-{combined_id}",
     "friendly_name": f"GPS Module {hostname}"
@@ -64,7 +63,6 @@ def on_connect(client, userdata, flags, rc):
                 # Send device tracker configuration data
                 client.publish(f"homeassistant/device_tracker/gps_module_{combined_id}/config", json.dumps(device_tracker_config), retain=True)
                 logging.info(f"Published configuration to homeassistant/device_tracker/gps_module_{combined_id}/config")
-                client.publish(f"gps_module/{combined_id}/state", "online")
                 break
     else:
         logging.error(f"Failed to connect to MQTT Broker at {client._host}:{client._port}, return code {rc}")
@@ -82,11 +80,6 @@ def on_message(client, userdata, msg):
         logging.info("Received 'online' message, resending device tracker configuration")
         client.publish(f"homeassistant/device_tracker/gps_module_{combined_id}/config", json.dumps(device_tracker_config), retain=True)
         logging.info(f"Resent configuration to homeassistant/device_tracker/gps_module_{combined_id}/config")
-
-# Assign the on_connect and on_message callbacks to each client
-for broker in brokers:
-    broker['client'].on_connect = on_connect
-    broker['client'].on_message = on_message
 
 def connect_to_brokers():
     for broker in brokers:
@@ -116,7 +109,6 @@ def get_gps_data():
             'bearing': packet.track,
             'time': packet.time,
             'satellites': packet.sats,
-            # Add other fields if they are available and needed
         }
         return data
     except Exception as e:
