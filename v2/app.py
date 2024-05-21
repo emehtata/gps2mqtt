@@ -5,7 +5,8 @@ import time
 import logging
 import socket
 import uuid
-import argparse
+import signal
+import sys
 from settings import brokers
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s [%(funcName)s:%(lineno)d]')
@@ -22,13 +23,12 @@ def get_version():
 VERSION = get_version()
 
 def get_primary_mac():
-    # Retrieve the MAC address of the primary network interface
-    primary_mac = None
     try:
-        primary_mac = ':'.join(['{:02x}'.format((uuid.getnode() >> elements) & 0xff) for elements in range(0, 2*6, 8)][::-1])
+        primary_mac = ':'.join(['{:02x}'.format((uuid.getnode() >> (i * 8)) & 0xff) for i in range(6)][::-1])
+        return primary_mac
     except Exception as e:
         logging.error(f"Error getting MAC address: {e}")
-    return primary_mac
+        return None
 
 # Get hostname
 hostname = socket.gethostname()
@@ -97,6 +97,9 @@ def connect_to_brokers():
 def get_gps_data():
     try:
         packet = gpsd.get_current()
+        if packet.mode < 2:  # 2D fix
+            logging.warning("No GPS fix available")
+            return None
         data = {
             'latitude': packet.lat,
             'longitude': packet.lon,
@@ -106,7 +109,6 @@ def get_gps_data():
             'bearing': packet.track,
             'time': packet.time,
             'satellites': packet.sats,
-            # Add other fields if they are available and needed
         }
         return data
     except Exception as e:
@@ -123,10 +125,22 @@ def send_data_to_mqtt(data):
             except Exception as e:
                 logging.error(f"Error sending data to MQTT at {broker['host']}:{broker['port']}: {e}")
 
+def signal_handler(sig, frame):
+    logging.info('Graceful shutdown initiated...')
+    for broker in brokers:
+        try:
+            if broker['client']:
+                broker['client'].disconnect()
+                broker['client'].loop_stop()
+        except Exception as e:
+            logging.error(f"Error during shutdown: {e}")
+    sys.exit(0)
+
 def main():
-
-
     logging.info(f"Starting GPS to MQTT application version {VERSION}")
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     # Connect to all brokers
     connect_to_brokers()
