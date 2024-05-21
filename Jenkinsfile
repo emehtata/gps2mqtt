@@ -11,12 +11,6 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                git 'https://github.com/emehtata/gps2mqtt.git'
-            }
-        }
-
         stage('Build Docker Image') {
             steps {
                 script {
