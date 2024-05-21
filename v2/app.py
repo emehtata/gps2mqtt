@@ -4,7 +4,6 @@ import json
 import time
 import logging
 import socket
-import uuid
 import signal
 import sys
 from settings import brokers
@@ -22,28 +21,16 @@ def get_version():
 
 VERSION = get_version()
 
-def get_primary_mac():
-    try:
-        primary_mac = ':'.join(['{:02x}'.format((uuid.getnode() >> (i * 8)) & 0xff) for i in range(6)][::-1])
-        return primary_mac
-    except Exception as e:
-        logging.error(f"Error getting MAC address: {e}")
-        return None
-
 # Get hostname
 hostname = socket.gethostname()
 
-# Generate a unique ID based on the MAC address
-mac_address = get_primary_mac()
-unique_id = mac_address.replace(":", "") if mac_address else "unknown_id"
-
 # Combined hostname and unique ID
-combined_id = f"{hostname}_{unique_id}"
+combined_id = f"{hostname}"
 
 # Device tracker configuration data
 device_tracker_config = {
     "state_topic": f"gps_module/{combined_id}/state",
-    "name": f"gps_module_{combined_id}",
+    "name": f"GPS Module {hostname}",
     "payload_home": "home",
     "payload_not_home": "not_home",
     "json_attributes_topic": f"gps_module/{combined_id}/attributes",
