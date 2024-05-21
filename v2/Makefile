@@ -41,7 +41,7 @@ remove:
 
 # Run the Docker container
 run:
-	docker run -d --name $(CONTAINER_NAME) --network host $(REPO_ADDRESS)/$(TAG)
+	docker run -d --name $(CONTAINER_NAME) --restart=unless-stopped --network host $(REPO_ADDRESS)/$(TAG)
 
 # Cleanup old Docker images
 cleanup:
