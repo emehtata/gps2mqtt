@@ -4,11 +4,13 @@ IMAGE_NAME = gps-mqtt-app
 CONTAINER_NAME = gps-mqtt-app
 REPO_ADDRESS = localhost:5000
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
-TAG := $(IMAGE_NAME):$(ARCH)-$(BRANCH)
+GITHASH := $(shell git rev-parse --short HEAD)
+HEXTIME := $(shell bash create_ver.sh)
+TAG := $(IMAGE_NAME):$(ARCH)-$(BRANCH)-$(HEXTIME)-$(GITHASH)
 DOCS_DIR ?= doc
 
 version:
-	@echo "$(BRANCH)" > VERSION
+	@echo "$(BRANCH)-$(HEXTIME)-$(GITHASH)" > VERSION
 	@cat VERSION
 # Build the Docker image
 build: version
