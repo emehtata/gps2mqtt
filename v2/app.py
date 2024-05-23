@@ -20,8 +20,8 @@ def get_version():
         return "unknown"
 
 VERSION = get_version()
-fix=0
-gps_error=False
+fix = 0
+gps_error = False
 
 # Get hostname
 hostname = socket.gethostname()
@@ -29,11 +29,15 @@ hostname = socket.gethostname()
 # Combined hostname and unique ID
 combined_id = f"{hostname}"
 
+# Load configuration from config.json
+with open("config.json", "r") as config_file:
+    config = json.load(config_file)
+
 # Device tracker configuration data
 device_tracker_config = {
-    "state_topic": f"gps_module/{combined_id}/state",
+    "state_topic": config['mqtt_topics']['state'].format(combined_id=combined_id),
     "name": f"GPS Module {hostname}",
-    "json_attributes_topic": f"gps_module/{combined_id}/attributes",
+    "json_attributes_topic": config['mqtt_topics']['attributes'].format(combined_id=combined_id),
     "unique_id": f"gps-module-{combined_id}",
     "friendly_name": f"GPS Module {hostname}"
 }
@@ -44,10 +48,8 @@ def on_connect(client, userdata, flags, rc):
         for broker in brokers:
             if broker['client'] == client:
                 broker['connected'] = True
-                client.subscribe("homeassistant/status")
-                logging.info(f"Subscribed to topic 'homeassistant/status' at {client._host}:{client._port}")
-
-                # Send device tracker configuration data
+                client.subscribe(config['mqtt_topics']['homeassistant_status'])
+                logging.info(f"Subscribed to topic '{config['mqtt_topics']['homeassistant_status']}' at {client._host}:{client._port}")
                 client.publish(f"homeassistant/device_tracker/gps_module_{combined_id}/config", json.dumps(device_tracker_config), retain=True)
                 logging.info(f"Published configuration to homeassistant/device_tracker/gps_module_{combined_id}/config")
                 break
@@ -87,11 +89,11 @@ def get_gps_data():
         packet = gpsd.get_current()
         if gps_error:
             logging.info("GPS active")
-            gps_error=False
+            gps_error = False
         if packet.mode < 2:  # 2D fix
             if packet.mode != fix:
                 logging.warning(f"No GPS fix available (Mode: {packet.mode}).")
-                fix=packet.mode
+                fix = packet.mode
             return None
         data = {
             'latitude': packet.lat,
@@ -109,7 +111,7 @@ def get_gps_data():
     except Exception as e:
         if not gps_error:
             logging.error(f"Error getting GPS data: {e}")
-            gps_error=True
+            gps_error = True
         return None
 
 def send_data_to_mqtt(data):
@@ -117,8 +119,8 @@ def send_data_to_mqtt(data):
         if broker['connected']:
             try:
                 client = broker['client']
-                # client.publish(f"gps_module/{combined_id}/state", "home")  # Publish state (assumed to be 'home' for testing)
-                client.publish(f"gps_module/{combined_id}/attributes", json.dumps(data))  # Publish attributes
+                client.publish(config['mqtt_topics']['attributes'].format(combined_id=combined_id), json.dumps(data))
+                logging.info(f"Data sent to MQTT at {broker['host']}:{broker['port']}")
             except Exception as e:
                 logging.error(f"Error sending data to MQTT at {broker['host']}:{broker['port']}: {e}")
 
@@ -154,7 +156,7 @@ def main():
         if gps_data:
             logging.info(f"Sending data: {gps_data}")
             send_data_to_mqtt(gps_data)
-        time.sleep(1)  # Send data every second
+        time.sleep(config['sleep_interval'])  # Send data every interval specified in config
 
 if __name__ == "__main__":
     main()

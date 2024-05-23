@@ -1,0 +1,8 @@
+{
+    "sleep_interval": 1,
+    "mqtt_topics": {
+        "state": "gps_module/{combined_id}/state",
+        "attributes": "gps_module/{combined_id}/attributes",
+        "homeassistant_status": "homeassistant/status"
+    }
+}
