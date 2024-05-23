@@ -32,8 +32,6 @@ combined_id = f"{hostname}"
 device_tracker_config = {
     "state_topic": f"gps_module/{combined_id}/state",
     "name": f"GPS Module {hostname}",
-    "payload_home": "home",
-    "payload_not_home": "not_home",
     "json_attributes_topic": f"gps_module/{combined_id}/attributes",
     "unique_id": f"gps-module-{combined_id}",
     "friendly_name": f"GPS Module {hostname}"
@@ -111,7 +109,7 @@ def send_data_to_mqtt(data):
         if broker['connected']:
             try:
                 client = broker['client']
-                client.publish(f"gps_module/{combined_id}/state", "home")  # Publish state (assumed to be 'home' for testing)
+                # client.publish(f"gps_module/{combined_id}/state", "home")  # Publish state (assumed to be 'home' for testing)
                 client.publish(f"gps_module/{combined_id}/attributes", json.dumps(data))  # Publish attributes
             except Exception as e:
                 logging.error(f"Error sending data to MQTT at {broker['host']}:{broker['port']}: {e}")
