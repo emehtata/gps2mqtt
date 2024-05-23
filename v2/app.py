@@ -146,6 +146,7 @@ def get_gps_data():
             'satellites': packet.sats,
             'sats_valid': packet.sats_valid,
             'gps_accuracy': packet.position_precision()[0],
+            'host': hostname
         }
         return data
     except Exception as e:
