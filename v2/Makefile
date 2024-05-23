@@ -6,11 +6,11 @@ REPO_ADDRESS = localhost:5000
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 GITHASH := $(shell git rev-parse --short HEAD)
 HEXTIME := $(shell bash create_ver.sh)
-TAG := $(IMAGE_NAME):$(ARCH)-$(BRANCH)-$(HEXTIME)-$(GITHASH)
+TAG = $(IMAGE_NAME):$(ARCH)-$(BRANCH)-$(HEXTIME)-$(GITHASH)
 DOCS_DIR ?= doc
 
 version:
-	@echo "$(BRANCH)-$(HEXTIME)-$(GITHASH)" > VERSION
+	@echo "$(ARCH)-$(BRANCH)-$(HEXTIME)-$(GITHASH)" > VERSION
 	@cat VERSION
 # Build the Docker image
 build: version
@@ -26,7 +26,7 @@ ifeq ($(BRANCH),dev)
 endif
 
 # Push the Docker image to the repository
-push:
+push: build
 	docker push $(REPO_ADDRESS)/$(TAG)
 ifeq ($(BRANCH),master)
 	docker push $(REPO_ADDRESS)/$(IMAGE_NAME):$(ARCH)-stable
@@ -47,7 +47,7 @@ remove:
 
 # Run the Docker container
 run:
-	docker run -d --name $(CONTAINER_NAME) --restart=unless-stopped --network host $(REPO_ADDRESS)/$(TAG)
+	docker run -d --name $(CONTAINER_NAME) --restart=unless-stopped --network host $(REPO_ADDRESS)/$(IMAGE_NAME):$(shell cat VERSION)
 
 # Cleanup old Docker images
 cleanup:
@@ -59,5 +59,5 @@ cleanup:
 # Rebuild the Docker image and restart the container
 restart: build stop remove run cleanup
 
-debug: version
+debug:
 	python3 -d app.py
