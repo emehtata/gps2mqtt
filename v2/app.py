@@ -21,6 +21,7 @@ def get_version():
 
 VERSION = get_version()
 fix=0
+gps_error=False
 
 # Get hostname
 hostname = socket.gethostname()
@@ -81,9 +82,12 @@ def connect_to_brokers():
             logging.error(f"Error connecting to MQTT Broker at {broker['host']}:{broker['port']}: {e}")
 
 def get_gps_data():
-    global fix
+    global fix, gps_error
     try:
         packet = gpsd.get_current()
+        if gps_error:
+            logging.info("GPS active")
+            gps_error=False
         if packet.mode < 2:  # 2D fix
             if packet.mode != fix:
                 logging.warning(f"No GPS fix available (Mode: {packet.mode}).")
@@ -101,7 +105,9 @@ def get_gps_data():
         }
         return data
     except Exception as e:
-        logging.error(f"Error getting GPS data: {e}")
+        if not gps_error:
+            logging.error(f"Error getting GPS data: {e}")
+            gps_error=True
         return None
 
 def send_data_to_mqtt(data):
