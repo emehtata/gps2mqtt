@@ -98,7 +98,7 @@ def get_gps_data():
             'longitude': packet.lon,
             'altitude': packet.alt,
             'climb': packet.climb,
-            'speed': packet.speed * 3.6,  # Convert m/s to km/h
+            'speed': packet.hspeed * 3.6,  # Convert m/s to km/h
             'bearing': packet.track,
             'time': packet.time,
             'satellites': packet.sats,
