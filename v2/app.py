@@ -55,7 +55,7 @@ def on_connect(client, userdata, flags, rc):
         logging.error(f"Failed to connect to MQTT Broker at {client._host}:{client._port}, return code {rc}")
 
 def on_disconnect(client, userdata, rc):
-    logging.warning(f"Disconnected from MQTT Broker at {client._host}:{client._port}. Reconnecting...")
+    logging.warning(f"Disconnected from MQTT Broker at {client._host}:{client._port}.")
     for broker in brokers:
         if broker['client'] == client:
             broker['connected'] = False
@@ -98,10 +98,12 @@ def get_gps_data():
             'longitude': packet.lon,
             'altitude': packet.alt,
             'climb': packet.climb,
-            'speed': packet.hspeed * 3.6,  # Convert m/s to km/h
+            'speed': packet.speed * 3.6,  # Convert m/s to km/h
             'bearing': packet.track,
             'time': packet.time,
             'satellites': packet.sats,
+            'sats_valid': packet.sats_valid,
+            'gps_accuracy': packet.position_precision()[0],
         }
         return data
     except Exception as e:
