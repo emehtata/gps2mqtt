@@ -5,6 +5,7 @@ CONTAINER_NAME = gps-mqtt-app
 REPO_ADDRESS = localhost:5000
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 TAG := $(IMAGE_NAME):$(ARCH)-$(BRANCH)
+DOCS_DIR ?= doc
 
 version:
 	@echo "$(BRANCH)" > VERSION
