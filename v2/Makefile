@@ -6,16 +6,19 @@ REPO_ADDRESS = localhost:5000
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 GITHASH := $(shell git rev-parse --short HEAD)
 HEXTIME := $(shell bash create_ver.sh)
-TAG = $(IMAGE_NAME):$(ARCH)-$(BRANCH)-$(HEXTIME)-$(GITHASH)
+VERSION := $(shell cat VERSION)
+TAG := $(VERSION)
 DOCS_DIR ?= doc
 
 version:
 	@echo "$(ARCH)-$(BRANCH)-$(HEXTIME)-$(GITHASH)" > VERSION
 	@cat VERSION
+
 # Build the Docker image
 build: version
+	export TAG=$(shell cat VERSION)
 	docker build -t $(TAG) .
-	docker tag $(TAG) $(REPO_ADDRESS)/$(TAG)
+	docker tag $(TAG) $(REPO_ADDRESS)/$(IMAGE_NAME):$(TAG)
 ifeq ($(BRANCH),master)
 	docker tag $(TAG) $(REPO_ADDRESS)/$(IMAGE_NAME):$(ARCH)-stable
 	docker tag $(TAG) $(REPO_ADDRESS)/$(IMAGE_NAME):stable
@@ -26,8 +29,8 @@ ifeq ($(BRANCH),dev)
 endif
 
 # Push the Docker image to the repository
-push: build
-	docker push $(REPO_ADDRESS)/$(TAG)
+push:
+	docker push $(REPO_ADDRESS)/$(IMAGE_NAME):$(TAG)
 ifeq ($(BRANCH),master)
 	docker push $(REPO_ADDRESS)/$(IMAGE_NAME):$(ARCH)-stable
 	docker push $(REPO_ADDRESS)/$(IMAGE_NAME):stable
