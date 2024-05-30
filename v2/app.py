@@ -8,7 +8,7 @@ import signal
 import sys
 from settings import brokers
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s [%(funcName)s:%(lineno)d]')
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s [%(funcName)s:%(lineno)d]')
 
 def get_version():
     """
