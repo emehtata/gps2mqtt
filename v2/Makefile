@@ -7,7 +7,7 @@ BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 GITHASH := $(shell git rev-parse --short HEAD)
 HEXTIME := $(shell bash create_ver.sh)
 VERSION := $(shell cat VERSION)
-TAG := $(VERSION)
+TAG := latest # $(VERSION)
 DOCS_DIR ?= doc
 
 version:
@@ -45,12 +45,13 @@ stop:
 	docker stop $(CONTAINER_NAME) || true
 
 # Remove the Docker container
-remove:
+remove: stop
 	docker rm $(CONTAINER_NAME) || true
 
 # Run the Docker container
 run:
-	docker run -d --name $(CONTAINER_NAME) --restart=unless-stopped --network host $(REPO_ADDRESS)/$(IMAGE_NAME):$(shell cat VERSION)
+	# docker run -d --name $(CONTAINER_NAME) --restart=unless-stopped --network host $(REPO_ADDRESS)/$(IMAGE_NAME):$(shell cat VERSION)
+	docker run -d --name $(CONTAINER_NAME) --restart=unless-stopped --network host $(REPO_ADDRESS)/$(IMAGE_NAME):latest
 
 # Cleanup old Docker images
 cleanup:
